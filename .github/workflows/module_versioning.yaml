@@ -1,0 +1,51 @@
+name: Module Versioning
+
+on:
+  push:
+    paths:
+      - "modules/**"
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  version_and_tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get changed module
+        id: changed_module
+        run: |
+          MODULE=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }} | grep '^modules/' | cut -d/ -f2 | uniq)
+          echo "module=$MODULE" >> $GITHUB_OUTPUT
+
+      - name: Generate and push tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+        run: |
+          MODULE=${{ steps.changed_module.outputs.module }}
+          LATEST_TAG=$(git describe --tags --abbrev=0 --match "${MODULE}-v*" 2>/dev/null || echo "${MODULE}-v0.0.0")
+
+          # Extract version number and increment patch
+          VERSION=$(echo $LATEST_TAG | sed -e "s/${MODULE}-v//")
+          MAJOR=$(echo $VERSION | cut -d. -f1)
+          MINOR=$(echo $VERSION | cut -d. -f2)
+          PATCH=$(echo $VERSION | cut -d. -f3)
+          PATCH=$((PATCH + 1))
+
+          NEW_TAG="${MODULE}-v${MAJOR}.${MINOR}.${PATCH}"
+
+          git config user.name flavius-dinu
+          git config user.email flaviuscdinu93@gmail.com
+          git tag -a $NEW_TAG -m "Release $NEW_TAG"
+
+          # Use the GITHUB_TOKEN for authentication
+          git push "https://${GITHUB_ACTOR}:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" $NEW_TAG
+
+          echo "new_tag=${NEW_TAG}" >> $GITHUB_OUTPUT
+        id: tag_version
